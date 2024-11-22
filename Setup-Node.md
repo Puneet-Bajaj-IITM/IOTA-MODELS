@@ -100,4 +100,7 @@ Refer to the **IPFS Setup** section from the earlier guide.
   ipfs swarm peers
   ```
 
+  sudo apt-get install build-essential libgtk-3-dev
+sudo apt install python3-wxgtk4.0
+
 ---
