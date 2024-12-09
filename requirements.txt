@@ -1,0 +1,9 @@
+ipfshttpclient
+cryptography
+aiohttp
+nio
+flask
+iota-sdk
+python-dotenv
+ipfs-api
+flask-sqlalchemy
