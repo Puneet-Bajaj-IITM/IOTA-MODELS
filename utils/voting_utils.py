@@ -1,7 +1,18 @@
 
+from datetime import datetime, UTC
+import asyncio
+from models.models import ModelVote, ModelRegistry
+from textwrap import dedent
+from iota_utils import mint_nft_with_ipfs
+import time
+
+
 class ModelVotingManager:
-    def __init__(self, matrix_client, db, VOTING_ROOMS, VOTING_DURATION):
+    def __init__(self, matrix_client, ipfs_client, account, db, MATRIX_PASSWORD, VOTING_ROOMS, VOTING_DURATION):
         self.matrix_client = matrix_client
+        self.account = account
+        self.ipfs_client = ipfs_client
+        self.matrix_password = MATRIX_PASSWORD
         self.db = db
         self.voting_rooms = VOTING_ROOMS 
         self.voting_duration = VOTING_DURATION 
@@ -17,28 +28,23 @@ class ModelVotingManager:
         Returns:
             bool: True if model is approved, False if rejected
         """
-        if not matrix_client.logged_in:
-            await matrix_client.login("Hosting+123321")
+        if not self.matrix_client.logged_in:
+            await self.matrix_client.login(self.matrix_password)
         # Create voting session
-        voting_session = ModelVote(
+        voting_session = ModelVote( # type: ignore
             model_name=model_name,
             yes_votes=0,
             no_votes=0,
-            voting_start=datetime.utcnow()
+            voting_start=datetime.now(UTC)
         )
         self.db.session.add(voting_session)
         self.db.session.commit()
 
         # Broadcast voting proposal
-        voting_start_message = await self.broadcast_voting_message({
+        await self.broadcast_voting_message({
             'model_name': model_name,
             'model_id': model_id
         })
-
-        # Vote counting loop
-        start_time = datetime.utcnow()
-        end_time = start_time + timedelta(seconds=self.voting_duration)
-        import time
 
         time.sleep(self.voting_duration) 
 
@@ -55,7 +61,10 @@ class ModelVotingManager:
                 for event in response.chunk:
                     # Check if this is a vote for our specific model
                     if self.is_valid_vote(event, model_id):
-                        self.process_single_vote(voting_session, event)
+                        self.process_single_vote(
+                            voting_session, 
+                            event
+                        )
 
             except Exception as e:
                 print(f"Error retrieving votes from room {room_id}: {e}")
@@ -77,7 +86,7 @@ class ModelVotingManager:
         # Example vote format: "yes ModelID" or "no ModelID"
         body = event.body.lower().strip()
         return (body.startswith('yes ') or body.startswith('no ')) and \
-               body.split()[-1] == model_id
+               body.split()[-1].strip() == model_id
 
     def process_single_vote(self, voting_session, event):
         """
@@ -120,9 +129,15 @@ class ModelVotingManager:
         if is_approved:
             try:
                 # Mint NFT and update model status
-                nft_id = mint_nft_with_ipfs(model)
+                nft_id = mint_nft_with_ipfs(
+                    account=self.account, 
+                    ipfs_client=self.ipfs_client, 
+                    metadata=model
+                )
+                
                 model.status = 'approved'
                 model.nft_id = nft_id
+                
             except Exception as e:
                 print(f"Model processing failed: {e}")
                 is_approved = False
@@ -135,7 +150,12 @@ class ModelVotingManager:
         self.db.session.commit()
 
         # Broadcast results
-        asyncio.create_task(self.broadcast_approval_result(model_name, is_approved))
+        asyncio.create_task(
+            self.broadcast_approval_result(
+                model_name, 
+                is_approved
+            )
+        )
 
         return is_approved
 
@@ -146,17 +166,19 @@ class ModelVotingManager:
         Args:
             model_data (dict): Model voting details
         """
-        voting_message = f"""\
-MODEL VOTING PROPOSAL
---------------------
-Model Name: {model_data['model_name']}
-Model ID: {model_data['model_id']}
-
-VOTING INSTRUCTIONS:
-- Reply 'yes {model_data['model_id']}' to approve this model
-- Reply 'no {model_data['model_id']}' to reject this model
-- Voting closes in 5 minutes
-"""
+        
+        voting_message = dedent(f"""
+            MODEL VOTING PROPOSAL
+            --------------------
+            Model Name: {model_data['model_name']}
+            Model ID: {model_data['model_id']}
+            
+            VOTING INSTRUCTIONS:
+            - Reply 'yes {model_data['model_id']}' to approve this model
+            - Reply 'no {model_data['model_id']}' to reject this model
+            - Voting closes in 5 minutes
+        """)
+        
         for room_id in self.voting_rooms:
             try:
                 await self.matrix_client.room_send(
@@ -170,8 +192,6 @@ VOTING INSTRUCTIONS:
             except Exception as e:
                 print(f"Failed to broadcast voting message: {e}")
 
-        return voting_message
-
     async def broadcast_approval_result(self, model_name, approved):
         """
         Broadcast model voting results
@@ -180,12 +200,14 @@ VOTING INSTRUCTIONS:
             model_name (str): Name of the model
             approved (bool): Whether the model was approved
         """
-        result_message = f"""\
-MODEL VOTING RESULT
-------------------
-Model: {model_name}
-Status: {'APPROVED' if approved else 'REJECTED'}
-"""
+        
+        result_message = dedent(f"""
+            MODEL VOTING RESULT
+            -------------------
+            Model: {model_name}
+            Status: {"APPROVED" if approved else "REJECTED"}
+        """)
+        
         for room_id in self.voting_rooms:
             try:
                 await self.matrix_client.room_send(

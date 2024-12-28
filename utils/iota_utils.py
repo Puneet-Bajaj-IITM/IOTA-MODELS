@@ -1,5 +1,7 @@
 
-from iota_sdk import Wallet, utf8_to_hex, MintNftParams, Utils
+from iota_sdk import utf8_to_hex, MintNftParams
+from iota_sdk.wallet.wallet import Wallet
+from iota_sdk.utils import Utils
 from ipfs_utils import upload_metadata_to_ipfs
 import os
 
@@ -41,7 +43,7 @@ def mint_nft_with_ipfs(ipfs_client, account, metadata: dict):
                                                outputIndex)
             nftId = Utils.compute_nft_id(outputId)
             print(f'New minted NFT ID: {nftId}')
-    return cid, nftId
+    return cid, nftId # type: ignore
 
 
 def mint_nft_collection_with_ipfs(ipfs_client, wallet, account, ISSUER_ID, metadata_list: list, issuer_nft_id):

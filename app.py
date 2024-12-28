@@ -2,27 +2,29 @@
 from dotenv import load_dotenv
 import ipfsApi
 from flask import jsonify, request, Flask, send_file
-from iota_utils import load_wallet
-from datetime import datetime
-from registry_utils import initialize_registry
-from file_transfer_utils import create_zip
+from utils.iota_utils import load_wallet
+from utils.registry_utils import initialize_registry
+from utils.file_transfer_utils import create_zip
 import io
-from voting_utils import ModelVotingManager
-from models import db, ModelRegistry
-from async_cli import Asyn
+from utils.voting_utils import ModelVotingManager
+from models.models import db, ModelRegistry, ModelVote
+from nio import AsyncClient
+from uuid import uuid4
+from sqlalchemy.exc import IntegrityError
 
 load_dotenv('.env.example')
 
 wallet, account = load_wallet(name='Alice')
-
 
 # IPFS Client
 ipfs_client = ipfsApi.Client('179.61.246.8', 5001)
 
 # Matrix Client for Voting
 matrix_client = AsyncClient("https://socialxmatch.com", "@bot_user:socialxmatch.com")
+MATRIX_PASSWORD = "Hosting+123321"
 
 VOTING_ROOMS = ["!4JVUuZfXSS0XfgU9:socialxmatch.com"]
+
 VOTING_DURATION = 300  # 5 minutes
 
 # Define the base IPFS gateway URL
@@ -36,6 +38,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Usage in main application
 voting_manager = ModelVotingManager(
     matrix_client=matrix_client,
+    ipfs_client=ipfs_client,
+    account=account,
+    MATRIX_PASSWORD=MATRIX_PASSWORD,
     VOTING_DURATION=VOTING_DURATION, 
     VOTING_ROOMS=VOTING_ROOMS,
     db=db
@@ -71,16 +76,13 @@ async def add_model():
         # print(weights_cid)
         config_cid = ipfs_client.add(config_path)[0]["Hash"]
 
-        # Mint NFT
-        metadata = {
-            "model_name": model_name,
-            "weights_cid": weights_cid,
-            "config_cid": config_cid,
-            "timestamp": datetime.now().isoformat()
-        }
-
-        model_id = str(uuid.uuid4())
-        
+        # # Mint NFT
+        # metadata = {
+        #     "model_name": model_name,
+        #     "weights_cid": weights_cid,
+        #     "config_cid": config_cid,
+        #     "timestamp": datetime.now().isoformat()
+        # }
     #     cid, nft_id = mint_nft_with_ipfs(
     #         ipfs_client=ipfs_client, 
     #         account=account, 
@@ -107,7 +109,11 @@ async def add_model():
     # except Exception as e:
     #     return jsonify({"error": str(e)}), 500
 
-        new_model = ModelRegistry(
+
+        model_id = str(uuid4())
+
+
+        new_model = ModelRegistry(# type: ignore
             model_name=model_name,
             nft_id='pending',
             weights_cid=weights_cid,
@@ -117,7 +123,7 @@ async def add_model():
         db.session.add(new_model)
 
         # Create voting record
-        vote_record = ModelVote(
+        vote_record = ModelVote(# type: ignore
             model_name=model_name,
             yes_votes=0,
             no_votes=0
@@ -244,6 +250,11 @@ def fetch_model():
         # Fetch files from IPFS
         weights_data = ipfs_client.cat(model.weights_cid)
         config_data = ipfs_client.cat(model.config_cid)
+        
+        if not isinstance(weights_data, bytes):
+            weights_data = weights_data.encode("utf-8")  # Convert to bytes if it's a string
+        if not isinstance(config_data, bytes):
+            config_data = config_data.encode("utf-8")  # Convert to bytes if it's a string
 
         # Create in-memory files
         weights_io = io.BytesIO(weights_data)

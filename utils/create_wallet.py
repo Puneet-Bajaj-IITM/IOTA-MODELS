@@ -1,7 +1,8 @@
 import os
 import shutil
 from dotenv import load_dotenv
-from iota_sdk import ClientOptions, CoinType, StrongholdSecretManager, Wallet
+from iota_sdk import ClientOptions, CoinType, StrongholdSecretManager
+from iota_sdk.wallet.wallet import Wallet
 
 load_dotenv('.env.example')
 
