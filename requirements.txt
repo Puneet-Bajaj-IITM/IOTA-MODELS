@@ -1,4 +1,5 @@
 aiofiles==24.1.0
+sacremoses
 aiohappyeyeballs==2.4.4
 aiohttp==3.11.10
 aiohttp_socks==0.9.1

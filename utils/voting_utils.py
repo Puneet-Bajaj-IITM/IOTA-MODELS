@@ -17,7 +17,7 @@ class ModelVotingManager:
         self.voting_rooms = VOTING_ROOMS 
         self.voting_duration = VOTING_DURATION 
 
-    async def count_votes_for_model(self, model_name, model_id):
+    async def count_votes_for_model(self, model_name, model_id, zip_path):
         """
         Count votes for a specific model using Matrix room messages
 
@@ -70,7 +70,7 @@ class ModelVotingManager:
                 print(f"Error retrieving votes from room {room_id}: {e}")
 
         # Finalize voting
-        return self.finalize_voting(voting_session, model_name)
+        return self.finalize_voting(voting_session, model_name, zip_path)
 
     def is_valid_vote(self, event, model_id):
         """
@@ -105,7 +105,7 @@ class ModelVotingManager:
 
         self.db.session.commit()
 
-    def finalize_voting(self, voting_session, model_name):
+    def finalize_voting(self, voting_session, model_name, zip_path):
         """
         Finalize voting and process model
 
@@ -128,15 +128,22 @@ class ModelVotingManager:
 
         if is_approved:
             try:
+                model_cid = self.ipfs_client.add(zip_path)[0]["Hash"]
+                model.model_cid = model_cid
+                
                 # Mint NFT and update model status
                 nft_id = mint_nft_with_ipfs(
                     account=self.account, 
                     ipfs_client=self.ipfs_client, 
                     metadata=model
                 )
+
+                
                 
                 model.status = 'approved'
                 model.nft_id = nft_id
+            
+                
                 
             except Exception as e:
                 print(f"Model processing failed: {e}")

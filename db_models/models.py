@@ -10,8 +10,7 @@ class ModelRegistry(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     model_name = db.Column(db.String(255), unique=True, nullable=False)
     nft_id = db.Column(db.String(255), nullable=False)
-    weights_cid = db.Column(db.String(255), nullable=False)
-    config_cid = db.Column(db.String(255), nullable=False)
+    model_cid = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(UTC))
     status = db.Column(db.String(50), default='pending')  # pending, approved, rejected
 

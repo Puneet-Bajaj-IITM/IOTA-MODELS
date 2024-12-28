@@ -1,4 +1,6 @@
 
+import zipfile
+import os
 from dotenv import load_dotenv
 import ipfsApi
 from flask import jsonify, request, Flask, send_file
@@ -11,8 +13,14 @@ from models.models import db, ModelRegistry, ModelVote
 from nio import AsyncClient
 from uuid import uuid4
 from sqlalchemy.exc import IntegrityError
+from model_pipelines.Teacher_Model import TeacherModel
+from model_pipelines.Student_Model import StudentModel
+from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 load_dotenv('.env.example')
+
+teacher_model = TeacherModel()
+student_model = StudentModel()
 
 wallet, account = load_wallet(name='Alice')
 
@@ -51,64 +59,68 @@ db.init_app(app)
 # Initialize the registry
 initialize_registry(app=app, db=db)
 
+# Directory to save uploaded models
+MODEL_SAVE_DIR = "uploaded_model"
+os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
 
 @app.route("/add_model", methods=["POST"])
 async def add_model():
-    """API endpoint to add a new ML model."""
+    """API endpoint to add a complete Hugging Face model as a zip file."""
     try:
-        model_name = request.form["model_name"]
-        weights_file = request.files["weights_file"]
-        config_file = request.files["config_file"]
+        # Retrieve form data
+        model_name = request.form.get("model_name")
+        task = request.form.get("task")
 
-        if not all([model_name, weights_file, config_file]):
-            return jsonify(
-                {"error": "Missing required parameters"}
-            ), 400
+        tokenizer_zip = request.files.get("tokenizer.zip")
+        
+        model_zip = request.files.get("model_zip")
 
-        # Save files locally or process them
-        weights_path = f"/tmp/{weights_file.filename}"
-        config_path = f"/tmp/{config_file.filename}"
-        weights_file.save(weights_path)
-        config_file.save(config_path)
+        # Validate input
+        if not all([model_name, model_zip]):
+            return jsonify({"error": "Missing required parameters"}), 400
 
-        # Upload files to IPFS
-        weights_cid = ipfs_client.add(weights_path)[0]['Hash']
-        # print(weights_cid)
-        config_cid = ipfs_client.add(config_path)[0]["Hash"]
+        # Create a directory for the new model
+        model_dir = os.path.join(MODEL_SAVE_DIR, model_name, 'weights')
+        tokenizer_dir = os.path.join(MODEL_SAVE_DIR, model_name, 'tokenizer')
+        os.makedirs(model_dir, exist_ok=True)
 
-        # # Mint NFT
-        # metadata = {
-        #     "model_name": model_name,
-        #     "weights_cid": weights_cid,
-        #     "config_cid": config_cid,
-        #     "timestamp": datetime.now().isoformat()
-        # }
-    #     cid, nft_id = mint_nft_with_ipfs(
-    #         ipfs_client=ipfs_client, 
-    #         account=account, 
-    #         metadata=metadata
-    #     )
+        # Save and extract the zip file
+        zip_path = os.path.join(MODEL_SAVE_DIR, f"{model_name}.zip")
+        model_zip.save(zip_path)
+        tokenizer_zip = os.path.join(MODEL_SAVE_DIR, f"{model_name}_tokenizer.zip")
+        tokenizer_zip.save(tokenizer_zip)
 
-    #     # Update database registry
-    #     update_registry(
-    #         db=db, 
-    #         model_name=model_name, 
-    #         nft_id=nft_id, 
-    #         weights_cid=weights_cid, 
-    #         config_cid=config_cid, 
-    #         ModelRegistry=ModelRegistry
-    #     )
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(model_dir)
 
-    #     return jsonify({
-    #         "status": "success",
-    #         "nft_id": nft_id,
-    #         "weights_cid": weights_cid,
-    #         "config_cid": config_cid
-    #     })
+        with zipfile.ZipFile(tokenizer_zip, 'r') as zip_ref:
+            zip_ref.extractall(tokenizer_dir)
 
-    # except Exception as e:
-    #     return jsonify({"error": str(e)}), 500
+        # Optionally, verify the presence of key files
+        required_files = ["pytorch_model.bin", "config.json"]
+        for required_file in required_files:
+            if not os.path.exists(os.path.join(model_dir, required_file)):
+                return jsonify(
+                    {"error": f"Missing required file: {required_file}"}
+                ), 400
 
+
+        config_path = os.path.join(model_dir, "config.json")
+        config = AutoConfig.from_pretrained(config_path)
+        model = AutoModel.from_pretrained(model_dir, config=config)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+
+        teacher_model.add_model(task, model_name, "model", model)
+        teacher_model.add_model(task, model_name, "tokenizer", tokenizer)
+
+        student_model.add_model(task, "model", model)
+        student_model.add_model(task, "tokenizer", tokenizer)
+
+        # # Save files locally or process them
+        # weights_path = f"/tmp/{weights_file.filename}"
+        # config_path = f"/tmp/{config_file.filename}"
+        # weights_file.save(weights_path)
+        # config_file.save(config_path)
 
         model_id = str(uuid4())
 
@@ -116,8 +128,6 @@ async def add_model():
         new_model = ModelRegistry(# type: ignore
             model_name=model_name,
             nft_id='pending',
-            weights_cid=weights_cid,
-            config_cid=config_cid,
             status='pending'
         )
         db.session.add(new_model)
@@ -133,7 +143,8 @@ async def add_model():
         # Broadcast for voting
         is_approved = await voting_manager.count_votes_for_model(
             model_name, 
-            model_id
+            model_id,
+            zip_path
         )
 
         if is_approved:
@@ -147,9 +158,12 @@ async def add_model():
     except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Model with this name already exists"}), 409
+    except zipfile.BadZipFile:
+        return jsonify({"error": "Invalid zip file provided."}), 400
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+        
 
 # @app.route("/fetch_model", methods=["GET"])
 # def fetch_model():
