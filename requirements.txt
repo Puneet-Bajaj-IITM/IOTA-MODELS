@@ -22,8 +22,8 @@ h11==0.14.0
 h2==4.1.0
 hpack==4.0.0
 hyperframe==6.0.1
+iota-sdk
 idna==3.10
-iota-sdk==1.1.4
 ipfs-api==0.2.3
 ipfshttpclient==0.7.0
 itsdangerous==2.2.0

@@ -1,4 +1,3 @@
-
 from iota_sdk import utf8_to_hex, MintNftParams
 from iota_sdk.wallet.wallet import Wallet
 from iota_sdk.utils import Utils

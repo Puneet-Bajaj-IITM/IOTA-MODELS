@@ -1,10 +1,11 @@
 
 from datetime import datetime, UTC
 import asyncio
-from models.models import ModelVote, ModelRegistry
+from db_models.models import ModelVote, ModelRegistry
 from textwrap import dedent
 from iota_utils import mint_nft_with_ipfs
 import time
+import torch
 
 
 class ModelVotingManager:
@@ -17,16 +18,9 @@ class ModelVotingManager:
         self.voting_rooms = VOTING_ROOMS 
         self.voting_duration = VOTING_DURATION 
 
-    async def count_votes_for_model(self, model_name, model_id, zip_path):
+    async def count_votes_for_model(self, model_name, model_id, student_model, update_teacher_model):
         """
         Count votes for a specific model using Matrix room messages
-
-        Args:
-            model_name (str): Name of the model
-            model_id (str): Unique identifier for the model proposal
-
-        Returns:
-            bool: True if model is approved, False if rejected
         """
         if not self.matrix_client.logged_in:
             await self.matrix_client.login(self.matrix_password)
@@ -70,18 +64,11 @@ class ModelVotingManager:
                 print(f"Error retrieving votes from room {room_id}: {e}")
 
         # Finalize voting
-        return self.finalize_voting(voting_session, model_name, zip_path)
+        return self.finalize_voting(voting_session, model_name, student_model, update_teacher_model)
 
     def is_valid_vote(self, event, model_id):
         """
         Validate if the message is a valid vote for the model
-
-        Args:
-            event (RoomMessageText): Matrix room message event
-            model_id (str): Model identifier
-
-        Returns:
-            bool: True if valid vote, False otherwise
         """
         # Example vote format: "yes ModelID" or "no ModelID"
         body = event.body.lower().strip()
@@ -91,10 +78,6 @@ class ModelVotingManager:
     def process_single_vote(self, voting_session, event):
         """
         Process an individual vote
-
-        Args:
-            voting_session (ModelVote): Current voting session
-            event (RoomMessageText): Matrix room message event
         """
         body = event.body.lower().strip()
 
@@ -105,16 +88,9 @@ class ModelVotingManager:
 
         self.db.session.commit()
 
-    def finalize_voting(self, voting_session, model_name, zip_path):
+    def finalize_voting(self, voting_session, model_name, student_model, update_teacher_model):
         """
         Finalize voting and process model
-
-        Args:
-            voting_session (ModelVote): Voting session details
-            model_name (str): Name of the model
-
-        Returns:
-            bool: True if model approved, False if rejected
         """
         # Retrieve the model
         model = ModelRegistry.query.filter_by(model_name=model_name).first()
@@ -128,8 +104,16 @@ class ModelVotingManager:
 
         if is_approved:
             try:
-                model_cid = self.ipfs_client.add(zip_path)[0]["Hash"]
-                model.model_cid = model_cid
+                teacher_model = update_teacher_model()
+                student_file_path = 'student_model.pt'
+                teacher_file_path = 'teacher_model.pt'
+
+                # Save models for testing (consider moving model creation elsewhere for production)
+                torch.save(student_model, student_file_path)
+                torch.save(teacher_model, teacher_file_path)
+
+                model.student_model_cid = self.ipfs_client.add(student_file_path)[0]["Hash"]
+                model.teacher_model_cid = self.ipfs_client.add(teacher_file_path)[0]["Hash"]
                 
                 # Mint NFT and update model status
                 nft_id = mint_nft_with_ipfs(
@@ -151,6 +135,7 @@ class ModelVotingManager:
                 model.status = 'rejected'
         else:
             model.status = 'rejected'
+            student_model = torch.load('student_model.pt')
 
         # Clean up voting session
         self.db.session.delete(voting_session)
@@ -169,9 +154,6 @@ class ModelVotingManager:
     async def broadcast_voting_message(self, model_data):
         """
         Broadcast model voting message to Matrix rooms
-
-        Args:
-            model_data (dict): Model voting details
         """
         
         voting_message = dedent(f"""
@@ -202,10 +184,6 @@ class ModelVotingManager:
     async def broadcast_approval_result(self, model_name, approved):
         """
         Broadcast model voting results
-
-        Args:
-            model_name (str): Name of the model
-            approved (bool): Whether the model was approved
         """
         
         result_message = dedent(f"""
