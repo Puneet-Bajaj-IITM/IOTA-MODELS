@@ -11,6 +11,7 @@ from utils.file_transfer_utils import create_zip, convert_to_bytes, cleanup_file
 from utils.voting_utils import ModelVotingManager
 from db_models.models import db, ModelRegistry
 from nio import AsyncClient
+from flask.typing import ResponseReturnValue
 import torch
 from uuid import uuid4
 from sqlalchemy.exc import IntegrityError
@@ -47,17 +48,17 @@ wallet, account = load_wallet(name=ACCOUNT_HOLDER_NAME)
 
 # Initialize IPFS Client
 IPFS_SERVER_IP = os.getenv('IPFS_SERVER_IP')
-IPFS_SERVER_PORT = int(os.getenv('IPFS_SERVER_PORT'))
+IPFS_SERVER_PORT = int(os.getenv('IPFS_SERVER_PORT', 5001))
 ipfs_client = ipfsApi.Client(IPFS_SERVER_IP, IPFS_SERVER_PORT)
 
 # Initialize Matrix Client for Voting
-MATRIX_SERVER_URI = os.getenv('MATRIX_SERVER_URI')
-MATRIX_BOT_USERNAME = os.getenv('MATRIX_BOT_USERNAME')
+MATRIX_SERVER_URI = os.getenv('MATRIX_SERVER_URI', 'http://socialxmatch.com')
+MATRIX_BOT_USERNAME = os.getenv('MATRIX_BOT_USERNAME', '@bot@socialxmatch.com')
 matrix_client = AsyncClient(MATRIX_SERVER_URI, MATRIX_BOT_USERNAME)
 MATRIX_PASSWORD = os.getenv('MATRIX_PASSWORD')
 
 VOTING_ROOMS = os.getenv('VOTING_ROOMS')
-VOTING_DURATION = int(os.getenv('VOTING_DURATION'))
+VOTING_DURATION = int(os.getenv('VOTING_DURATION', 300))
 
 # Define IPFS gateway URL
 ipfs_gateway_url = os.getenv('IPFS_GATEWAY_URI')
@@ -85,11 +86,11 @@ db.init_app(app)
 initialize_registry(app=app, db=db)
 
 # Directory to save uploaded models
-MODEL_SAVE_DIR = os.getenv('MODEL_SAVE_DIR')
+MODEL_SAVE_DIR = os.getenv('MODEL_SAVE_DIR', '/models')
 os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
 
 @app.route("/add_model", methods=["POST"])
-async def add_model() -> jsonify:
+async def add_model() -> ResponseReturnValue:
     """API endpoint to add a complete Hugging Face model as a zip file."""
     try:
         # Retrieve form data
@@ -107,6 +108,8 @@ async def add_model() -> jsonify:
         model_dir = os.path.join(MODEL_SAVE_DIR, model_name, 'weights')
         tokenizer_dir = os.path.join(MODEL_SAVE_DIR, model_name, 'tokenizer')
         os.makedirs(model_dir, exist_ok=True)
+        os.makedirs(tokenizer_dir, exist_ok=True)
+
 
         # Save and extract zip files
         zip_path = os.path.join(MODEL_SAVE_DIR, f"{model_name}.zip")
@@ -144,7 +147,7 @@ async def add_model() -> jsonify:
 
         # Create a new model entry in the database
         model_id = str(uuid4())
-        new_model = ModelRegistry(
+        new_model = ModelRegistry( #type : ignore
             model_name=model_name,
             nft_id='pending',
             status='pending'
@@ -182,7 +185,7 @@ async def add_model() -> jsonify:
 
 
 @app.route("/fetch_model", methods=["GET"])
-def fetch_model() -> jsonify:
+def fetch_model() -> ResponseReturnValue:
     """
     Fetch approved model files either by name or by NFT ID.
     Fetches the corresponding teacher and student model files from IPFS and sends them as a zip archive.
