@@ -1,13 +1,9 @@
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-rustc --version
+python 3.10
+
+docker run -p 6379:6379 redis
+
+
 pip install --upgrade pip
 
-sudo apt update
-sudo apt install libudev-dev
-
-pkg-config --libs --cflags libudev
-
-
-cd iota-sdk/bindings/python
-python setup.py install
+python app.py
+celery -A app.celery worker --loglevel=info --pool=eventlet

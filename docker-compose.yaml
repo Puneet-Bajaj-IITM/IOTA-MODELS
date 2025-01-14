@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  # Flask application
+  web:
+    build: .
+    container_name: flask_app
+    ports:
+      - "5000:5000"  # Expose the Flask app on port 5000
+    environment:
+      - FLASK_APP=app.py  # Adjust if necessary
+      - FLASK_ENV=development  # Set to "production" for production environment
+    depends_on:
+      - redis  # Ensure Redis is running before the Flask app starts
+    volumes:
+      - ./instance:/app/instance
+      - ./example-walletdb:/app/example-walletdb
+      - ./uploaded_model:/app/uploaded_model
+    networks:
+      - app_network
+    external_links:
+      - redis  # Allow the app to access Redis using its container name
+
+  # Celery worker
+  celery:
+    build: .
+    container_name: celery_worker
+    command:  celery -A app.celery worker --loglevel=info --pool=eventlet  # Replace with the correct command for your Celery app
+    depends_on:
+      - redis  # Celery needs Redis to start
+    volumes:
+      - ./instance:/app/instance
+      - ./example-walletdb:/app/example-walletdb
+      - ./uploaded_model:/app/uploaded_model
+    networks:
+      - app_network
+
+  # Redis service
+  redis:
+    image: "redis:latest"
+    container_name: redis
+    ports:
+      - "6379:6379"  # Expose Redis on the default port 6379
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  folder:
+  instance:
+  example-walletdb:
+  uploaded_model:

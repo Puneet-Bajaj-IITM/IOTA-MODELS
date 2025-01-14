@@ -1,0 +1,1 @@
+curl -X GET http://localhost:5000/model_status/'model-id' to get status

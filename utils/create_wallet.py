@@ -7,8 +7,11 @@ from iota_sdk.wallet.wallet import Wallet
 load_dotenv('.env.example')
 
 # Removes the directory and all its contents
-shutil.rmtree('example-walletdb')
-os.remove('example.stronghold')
+try:
+    shutil.rmtree('example-walletdb')
+    os.remove('example.stronghold')
+except :
+    pass
 
 node_url = os.environ.get('NODE_URL', 'https://api.testnet.shimmer.network')
 client_options = ClientOptions(nodes=[node_url])

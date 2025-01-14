@@ -4,7 +4,7 @@ from io import BytesIO
 import os
 
 # Create a ZIP file in memory
-def create_zip(student_model_io: BytesIO, teacher_model_io: BytesIO, model_name: str) -> BytesIO:
+def create_zip(student_model_io: BytesIO, teacher_model_io: BytesIO, global_model_io: BytesIO, model_name: str) -> BytesIO:
     """
     Create a ZIP archive containing both the student and teacher models in memory.
     Returns a BytesIO object containing the zip file.
@@ -13,6 +13,7 @@ def create_zip(student_model_io: BytesIO, teacher_model_io: BytesIO, model_name:
     with zipfile.ZipFile(zip_io, 'w', zipfile.ZIP_DEFLATED) as zipf:
         zipf.writestr(f"{model_name}_student_model.pt", student_model_io.getvalue())
         zipf.writestr(f"{model_name}_teacher_model.pt", teacher_model_io.getvalue())
+        zipf.writestr(f"{model_name}_global_model.pt", global_model_io.getvalue())
     zip_io.seek(0)  # Move to the beginning of the in-memory file
     return zip_io
 

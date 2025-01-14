@@ -1,8 +1,9 @@
 from iota_sdk import utf8_to_hex, MintNftParams
 from iota_sdk.wallet.wallet import Wallet
 from iota_sdk.utils import Utils
-from ipfs_utils import upload_metadata_to_ipfs
+from .ipfs_utils import upload_metadata_to_ipfs
 import os
+import json
 
 def load_wallet(name):
 
@@ -18,14 +19,12 @@ def load_wallet(name):
     return wallet, account
 
 
-def mint_nft_with_ipfs(ipfs_client, account, metadata: dict):
+def mint_nft_with_ipfs(account, metadata: dict):
     """Mint a single NFT with metadata stored on IPFS."""
-    print("Uploading metadata to IPFS...")
-    cid = upload_metadata_to_ipfs(ipfs_client, metadata)
-    cid_hex = utf8_to_hex(cid)
-
+    st = json.dumps(metadata)
+    immst = utf8_to_hex(st)
     print("Sending NFT minting transaction...")
-    params = MintNftParams(immutableMetadata=cid_hex)
+    params = MintNftParams(immutableMetadata=immst)
     transaction = account.mint_nfts([params])
 
     # Wait for transaction inclusion
@@ -42,7 +41,7 @@ def mint_nft_with_ipfs(ipfs_client, account, metadata: dict):
                                                outputIndex)
             nftId = Utils.compute_nft_id(outputId)
             print(f'New minted NFT ID: {nftId}')
-    return cid, nftId # type: ignore
+    return nftId # type: ignore
 
 
 def mint_nft_collection_with_ipfs(ipfs_client, wallet, account, ISSUER_ID, metadata_list: list, issuer_nft_id):
