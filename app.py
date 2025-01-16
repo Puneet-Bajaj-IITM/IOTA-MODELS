@@ -442,8 +442,24 @@ def fetch_model() -> ResponseReturnValue:
             model = ModelRegistry.query.filter_by(nft_id=nft_id, status='approved').first()
 
         if not model:
-            return jsonify({"error": "Approved model not found"}), 404
+            models['student'].add_model(task=task, model_type="model", value=model)
+            models['student'].add_model(task=task, model_type="tokenizer", value=tokenizer)
 
+            models['global'].add_model("model", model)
+            models['global'].add_model("tokenizer", tokenizer)
+            
+            teacher_model_io = BytesIO(models['teacher'])
+            student_model_io = BytesIO(models['student'])
+            global_model_io = BytesIO(models['global'])
+            zip_file = create_zip(student_model_io, teacher_model_io, global_model_io, 'test_model')
+    
+            return send_file(
+                zip_file,
+                as_attachment=True,
+                download_name=f"{model.model_name}_model_files.zip",
+                mimetype="application/zip"
+            )
+            
         # Fetch IPFS data
         teacher_model_data = fetch_ipfs_data(model.teacher_model_cid, f'http://{IPFS_SERVER_IP}:{IPFS_SERVER_PORT}')
         student_model_data = fetch_ipfs_data(model.student_model_cid, f'http://{IPFS_SERVER_IP}:{IPFS_SERVER_PORT}')
