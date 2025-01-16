@@ -28,6 +28,7 @@ from celery import Celery
 from datetime import datetime, UTC
 from io import BytesIO
 from functools import lru_cache
+from flask_cors import CORS
 import asyncio
 import nest_asyncio
 
@@ -60,6 +61,7 @@ app.config.update(
     CELERY_BROKER_URL='redis://localhost:6379/0',
     result_backend='redis://localhost:6379/0'
 )
+CORS(app) 
 
 
 # Client factories
